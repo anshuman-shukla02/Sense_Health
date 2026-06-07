@@ -1,5 +1,5 @@
-// Sense Health — Calm Health Theme Colors
-// Inspired by Headspace, Calm, and modern health apps
+// Sense Health — Premium Health Theme Colors
+// Inspired by Headspace, Calm, modern health apps + premium dark UI
 
 export const Colors = {
   // Primary — Soft Teal / Calming Cyan
@@ -63,6 +63,17 @@ export const Colors = {
   // Chart colors
   chart: ['#52A8A2', '#3B5266', '#8CB369', '#F4A261', '#E07A5F', '#D96C6C'],
 
+  // ── Glassmorphism Utilities ──
+  glass: 'rgba(255, 255, 255, 0.08)',
+  glassBorder: 'rgba(255, 255, 255, 0.15)',
+  glassStrong: 'rgba(255, 255, 255, 0.12)',
+  glassDark: 'rgba(0, 0, 0, 0.04)',
+
+  // ── Dark Header Colors ──
+  headerDark: '#1A2332',
+  headerMid: '#243447',
+  headerLight: '#2C3E50',
+
   // Gradient presets (Smooth gradients)
   gradientPrimary: ['#52A8A2', '#85C7C3'],
   gradientSecondary: ['#3B5266', '#657E93'],
@@ -71,6 +82,26 @@ export const Colors = {
   gradientDark: ['#2C3E50', '#3B5266'],
   gradientCard: ['#FFFFFF', '#F8FAF9'],
   gradientHealth: ['#52A8A2', '#3B5266'], // Teal to Navy
+
+  // ── Premium Dark Headers ──
+  gradientHeaderDark: ['#1A2332', '#243447', '#2C3E50'],
+  gradientHeaderWarm: ['#2C3E50', '#3B5266', '#52A8A2'],
+  gradientHeaderPurple: ['#1A1A2E', '#16213E', '#0F3460'],
+  gradientHeaderGame: ['#0D1B2A', '#1B2838', '#2C3E50'],
+
+  // ── Vibrant Accent Gradients ──
+  gradientTeal: ['#52A8A2', '#4ECDC4'],
+  gradientEmerald: ['#40C057', '#82C91E'],
+  gradientSunset: ['#FF7E5F', '#FEB47B'],
+  gradientLavender: ['#9013FE', '#BD10E0'],
+  gradientOcean: ['#00C9FF', '#92FE9D'],
+  gradientRose: ['#F093FB', '#F5576C'],
+
+  // ── Tab Bar ──
+  tabBarBg: '#FFFFFF',
+  tabBarActive: '#52A8A2',
+  tabBarInactive: '#BDC3C7',
+  tabBarShadow: 'rgba(44, 62, 80, 0.08)',
 };
 
 export default Colors;

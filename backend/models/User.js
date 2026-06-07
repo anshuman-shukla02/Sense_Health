@@ -18,9 +18,14 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: false,
     minlength: 6,
     select: false
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true
   },
   age: {
     type: Number,
@@ -37,6 +42,10 @@ const userSchema = new mongoose.Schema({
   baselineEstablished: {
     type: Boolean,
     default: false
+  },
+  geminiApiKey: {
+    type: String,
+    select: false // Don't expose by default in queries
   },
   createdAt: {
     type: Date,

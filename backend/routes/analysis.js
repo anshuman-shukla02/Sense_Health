@@ -2,11 +2,62 @@ const express = require('express');
 const DailyLog = require('../models/DailyLog');
 const Baseline = require('../models/Baseline');
 const RiskAlert = require('../models/RiskAlert');
+const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Initialize Gemini API
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'your_gemini_api_key_here');
+// Default Gemini instance (server-level key)
+const defaultGenAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+
+// Get Gemini model for a specific user (uses their key if set, otherwise server default)
+async function getGeminiModel(userId) {
+  const user = await User.findById(userId).select('+geminiApiKey');
+  const apiKey = user?.geminiApiKey || process.env.GEMINI_API_KEY || '';
+  const genAI = user?.geminiApiKey
+    ? new GoogleGenerativeAI(apiKey)
+    : defaultGenAI;
+  return { model: genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }), usingCustomKey: !!user?.geminiApiKey };
+}
+
+// Extract only health-relevant fields from baseline (strips _id, __v, user, timestamps)
+function slimBaseline(baseline) {
+  if (!baseline) return null;
+  const b = baseline.toObject ? baseline.toObject() : baseline;
+  return {
+    sleep: b.sleep,
+    activity: b.activity,
+    nutrition: b.nutrition,
+    mental: b.mental,
+    vitals: b.vitals,
+    screenTime: b.screenTime,
+    cognitive: b.cognitive,
+    dataPoints: b.dataPointsUsed,
+    reliable: b.isReliable,
+  };
+}
+
+// Extract only health-relevant fields from daily logs
+function slimLog(log) {
+  if (!log) return null;
+  const l = log.toObject ? log.toObject() : log;
+  return {
+    date: l.date?.toISOString?.()?.split('T')[0] || l.date,
+    sleep: l.sleep,
+    activity: { steps: l.activity?.steps, exerciseMin: l.activity?.exerciseMinutes, type: l.activity?.exerciseType, intensity: l.activity?.intensity },
+    nutrition: { meals: l.nutrition?.mealsCount, water: l.nutrition?.waterIntake, junkFood: l.nutrition?.junkFood, caffeine: l.nutrition?.caffeine },
+    mental: l.mental,
+    screenTime: l.screenTime,
+    cognitive: l.cognitive ? { reactionTime: l.cognitive.reactionTime, memoryScore: l.cognitive.memoryScore, colorScore: l.cognitive.colorScore } : undefined,
+    symptoms: l.symptoms?.length ? l.symptoms : undefined,
+  };
+}
+
+// Detect quota exhaustion from Gemini errors
+function isQuotaError(err) {
+  const msg = (err.message || '').toLowerCase();
+  const status = err.status || err.httpStatusCode || err.code;
+  return status === 429 || msg.includes('quota') || msg.includes('resource_exhausted') || msg.includes('rate limit');
+}
 
 const router = express.Router();
 
@@ -38,11 +89,20 @@ router.get('/risk', protect, async (req, res) => {
 
     const riskResult = calculateRiskScore(latestLog, baseline);
 
-    // Save the alert
-    const alert = await RiskAlert.create({
-      user: req.user.id,
-      ...riskResult
-    });
+    // Save or update today's alert (preventing repeated duplicate alerts for the same day)
+    const now = new Date();
+    const normalizedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const alert = await RiskAlert.findOneAndUpdate(
+      { user: req.user.id, date: normalizedDate },
+      {
+        user: req.user.id,
+        date: normalizedDate,
+        ...riskResult,
+        acknowledged: false
+      },
+      { new: true, upsert: true, runValidators: true }
+    );
 
     res.json({ success: true, data: alert });
   } catch (err) {
@@ -107,10 +167,23 @@ router.get('/alerts', protect, async (req, res) => {
   try {
     const { limit = 10 } = req.query;
     const alerts = await RiskAlert.find({ user: req.user.id })
-      .sort({ date: -1 })
-      .limit(parseInt(limit));
+      .sort({ date: -1 });
 
-    res.json({ success: true, data: alerts });
+    // Deduplicate alerts by calendar day YYYY-MM-DD
+    const uniqueAlerts = [];
+    const seenDates = new Set();
+
+    for (const alert of alerts) {
+      if (!alert.date) continue;
+      const dateStr = new Date(alert.date).toISOString().split('T')[0];
+      if (!seenDates.has(dateStr)) {
+        seenDates.add(dateStr);
+        uniqueAlerts.push(alert);
+      }
+    }
+
+    const limitedAlerts = uniqueAlerts.slice(0, parseInt(limit));
+    res.json({ success: true, data: limitedAlerts });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -166,7 +239,10 @@ router.get('/summary', protect, async (req, res) => {
       mood: avg(recentLogs.map(l => l.mental?.mood)),
       stress: avg(recentLogs.map(l => l.mental?.stressLevel)),
       steps: avg(recentLogs.map(l => l.activity?.steps)),
-      water: avg(recentLogs.map(l => l.nutrition?.waterIntake))
+      water: avg(recentLogs.map(l => l.nutrition?.waterIntake)),
+      reactionTime: avg(recentLogs.map(l => l.cognitive?.reactionTime)),
+      memoryScore: avg(recentLogs.map(l => l.cognitive?.memoryScore)),
+      colorScore: avg(recentLogs.map(l => l.cognitive?.colorScore))
     };
 
     // Overall health assessment
@@ -175,6 +251,7 @@ router.get('/summary', protect, async (req, res) => {
     if (weeklyAvg.mood) healthScore += ((weeklyAvg.mood - 5) * 3);
     if (weeklyAvg.stress) healthScore -= ((weeklyAvg.stress - 5) * 2);
     if (weeklyAvg.steps) healthScore += (weeklyAvg.steps >= 8000 ? 10 : -3);
+    if (weeklyAvg.reactionTime) healthScore += (weeklyAvg.reactionTime <= 300 ? 5 : weeklyAvg.reactionTime > 400 ? -10 : -3);
     healthScore = Math.max(0, Math.min(100, Math.round(healthScore)));
 
     const overallHealth = healthScore >= 80 ? 'excellent'
@@ -289,6 +366,30 @@ function calculateRiskScore(log, baseline) {
     totalWeight += 15;
   }
 
+  // Cognitive & Reflex fatigue risk
+  if (baseline.cognitive?.avgReactionTime && log.cognitive?.reactionTime) {
+    const reactionDev = ((log.cognitive.reactionTime - baseline.cognitive.avgReactionTime) / baseline.cognitive.avgReactionTime) * 100;
+    
+    // For reaction time, today's time > baseline means slower (higher risk)
+    let cognitiveScore = calculateCategoryRisk(reactionDev, 15, 30);
+    
+    if (baseline.cognitive?.avgMemoryScore && log.cognitive?.memoryScore) {
+      const memoryDev = ((log.cognitive.memoryScore - baseline.cognitive.avgMemoryScore) / baseline.cognitive.avgMemoryScore) * 100;
+      // Below baseline = higher risk (use -memoryDev)
+      cognitiveScore = (cognitiveScore + calculateCategoryRisk(-memoryDev, 15, 30)) / 2;
+    }
+
+    categories.push({
+      name: 'cognitive',
+      score: Math.round(cognitiveScore),
+      deviation: Math.abs(reactionDev).toFixed(1),
+      direction: reactionDev >= 0 ? 'slower' : 'faster',
+      message: getCognitiveMessage(log.cognitive, reactionDev, cognitiveScore)
+    });
+    weightedScore += cognitiveScore * 20;
+    totalWeight += 20;
+  }
+
   const overallRiskScore = totalWeight > 0
     ? Math.round(weightedScore / totalWeight)
     : 0;
@@ -343,6 +444,13 @@ function getScreenTimeMessage(hours, deviation, score) {
   return `Screen time is ${Math.abs(deviation).toFixed(0)}% ${deviation > 0 ? 'above' : 'below'} your baseline.`;
 }
 
+function getCognitiveMessage(cognitive, deviation, score) {
+  if (score < 20) return `Reflexes and cognitive attention are within normal baseline range.`;
+  if (deviation > 30) return `Reaction time is significantly slower (${cognitive.reactionTime}ms, +${deviation.toFixed(0)}%), suggesting high neural fatigue.`;
+  if (cognitive.memoryScore && cognitive.memoryScore < 4) return `Cognitive focus is low (Memory Level ${cognitive.memoryScore}). Take a screen break.`;
+  return `Cognitive markers deviate ${Math.abs(deviation).toFixed(0)}% from baseline.`;
+}
+
 function generateRecommendations(categories, log) {
   const recommendations = [];
 
@@ -379,6 +487,12 @@ function generateRecommendations(categories, log) {
         case 'screenTime':
           recommendations.push('Follow the 20-20-20 rule: every 20 min, look at something 20 feet away for 20 seconds.');
           break;
+        case 'cognitive':
+          if (log.cognitive?.reactionTime && log.cognitive.reactionTime > 350) {
+            recommendations.push('Slow reaction times detected. Consider taking a 15-minute power nap or stepping away from screens.');
+          }
+          recommendations.push('Engage in a 5-minute deep breathing or mindfulness session to restore attention and reduce cognitive fatigue.');
+          break;
       }
     }
   }
@@ -401,14 +515,16 @@ router.get('/ai-insights', protect, async (req, res) => {
       return res.json({ success: true, data: "Start logging your daily habits to get personalized AI insights." });
     }
 
-    const prompt = `
-      You are an expert health and wellness assistant. Analyze the following user data (which includes baseline and the last 3 days of logs) and provide 3-4 insightful, highly personalized, and actionable health suggestions. Do NOT use markdown. Return the response as a JSON array of strings, where each string is a separate suggestion.
-      
-      Baseline: ${JSON.stringify(baseline)}
-      Recent Logs: ${JSON.stringify(recentLogs)}
-    `;
+    // Slim down the data to reduce token usage by ~60-70%
+    const slimB = slimBaseline(baseline);
+    const slimLogs = recentLogs.map(slimLog);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const prompt = `You are an expert health and wellness assistant. Analyze this user data and provide 3-4 insightful, personalized, actionable health suggestions. Do NOT use markdown. Return only a JSON array of strings.
+
+Baseline: ${JSON.stringify(slimB)}
+Recent Logs: ${JSON.stringify(slimLogs)}`;
+
+    const { model } = await getGeminiModel(req.user.id);
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
@@ -426,8 +542,71 @@ router.get('/ai-insights', protect, async (req, res) => {
 
     res.json({ success: true, data: insights });
   } catch (err) {
-    console.error('Error generating AI insights:', err);
-    res.status(500).json({ success: false, message: 'Failed to generate AI insights.' });
+    console.error('Error generating AI insights:', err.message || err);
+    if (isQuotaError(err)) {
+      return res.status(429).json({
+        success: false,
+        code: 'QUOTA_EXHAUSTED',
+        message: 'Gemini API quota exhausted. Add your own API key in Settings or try again later.'
+      });
+    }
+    res.status(500).json({ success: false, message: `Failed to generate AI insights: ${err.message || 'Unknown error'}` });
+  }
+});
+
+// @route   POST /api/analysis/chat
+// @desc    Ask a follow-up question to the health coach
+router.post('/chat', protect, async (req, res) => {
+  try {
+    const { question, history } = req.body;
+    
+    if (!question) {
+      return res.status(400).json({ success: false, message: 'Question is required.' });
+    }
+
+    const baseline = await Baseline.findOne({ user: req.user.id });
+    const recentLogs = await DailyLog.find({ user: req.user.id }).sort({ date: -1 }).limit(3);
+
+    // Slim down the data to reduce token usage
+    const slimB = slimBaseline(baseline);
+    const slimLogs = recentLogs.map(slimLog);
+
+    const contextPrompt = `You are an expert health and wellness coach. Chat with the user about their health.
+Baseline: ${JSON.stringify(slimB || 'No baseline yet')}
+Recent Logs: ${JSON.stringify(slimLogs.length ? slimLogs : 'No logs yet')}
+
+Be practical, friendly, supportive, scientifically grounded. Limit to 2 short paragraphs. Suggest specific actionable steps. No HTML.`;
+
+    const { model } = await getGeminiModel(req.user.id);
+    
+    let promptText = `${contextPrompt}\n\n`;
+    // Only include last 6 messages of history to keep prompt small
+    if (history && Array.isArray(history) && history.length > 0) {
+      const recentHistory = history.slice(-6);
+      promptText += "Conversation history:\n";
+      recentHistory.forEach(msg => {
+        const speaker = msg.role === 'user' ? 'User' : 'Coach';
+        promptText += `${speaker}: ${msg.content}\n`;
+      });
+    }
+    
+    promptText += `User: ${question}\nCoach:`;
+
+    const result = await model.generateContent(promptText);
+    const response = await result.response;
+    const answer = response.text().trim();
+
+    res.json({ success: true, answer });
+  } catch (err) {
+    console.error('Error in AI Coach Chat:', err.message || err);
+    if (isQuotaError(err)) {
+      return res.status(429).json({
+        success: false,
+        code: 'QUOTA_EXHAUSTED',
+        message: 'Gemini API quota exhausted. Add your own API key in Settings or try again later.'
+      });
+    }
+    res.status(500).json({ success: false, message: `Failed to generate response from AI coach: ${err.message || 'Unknown error'}` });
   }
 });
 

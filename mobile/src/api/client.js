@@ -4,12 +4,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 // Change this to your backend URL
-// For Web/iOS: http://localhost:5001
+// For Web/iOS Simulator: http://localhost:5001 (Recommended, router-independent)
+// For Physical Mobile Devices on Wifi: http://10.180.190.92:5001
 // For Android emulator: http://10.0.2.2:5001
 const getBaseUrl = () => {
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:5001/api';
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
   }
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:5001/api'; // Android Emulator Bridge
+  }
+  // iOS Simulator and Web use localhost to connect to the host machine.
+  // For physical devices on Wi-Fi, replace 'localhost' with your machine's local IP.
   return 'http://localhost:5001/api';
 };
 
@@ -35,6 +41,12 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let onUnauthorized = null;
+
+export const setUnauthorizedHandler = (handler) => {
+  onUnauthorized = handler;
+};
+
 // Response interceptor — handle 401
 api.interceptors.response.use(
   (response) => response,
@@ -42,6 +54,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('user');
+      if (onUnauthorized) {
+        onUnauthorized();
+      }
     }
     return Promise.reject(error);
   }
@@ -51,8 +66,11 @@ api.interceptors.response.use(
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
+  googleLogin: (idToken) => api.post('/auth/google', { idToken }),
   getMe: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/profile', data),
+  saveGeminiKey: (apiKey) => api.put('/auth/gemini-key', { apiKey }),
+  getGeminiKey: () => api.get('/auth/gemini-key'),
 };
 
 // ===== Data =====
@@ -61,6 +79,8 @@ export const dataAPI = {
   getLogs: (params) => api.get('/data/logs', { params }),
   getLog: (date) => api.get(`/data/log/${date}`),
   getBaseline: () => api.get('/data/baseline'),
+  submitGameResult: (data) => api.post('/data/game', data),
+  getGameHistory: () => api.get('/data/game/history'),
 };
 
 // ===== Analysis =====
@@ -69,7 +89,8 @@ export const analysisAPI = {
   getTrends: (days = 14) => api.get('/analysis/trends', { params: { days } }),
   getAlerts: (limit = 10) => api.get('/analysis/alerts', { params: { limit } }),
   getSummary: () => api.get('/analysis/summary'),
-  getAIInsights: () => api.get('/analysis/ai-insights'),
+  getAIInsights: () => api.get('/analysis/ai-insights', { timeout: 30000 }),
+  askCoach: (question, history) => api.post('/analysis/chat', { question, history }, { timeout: 30000 }),
 };
 
 // ===== Health Check =====

@@ -1,5 +1,5 @@
-// Sense Health — Daily Log Screen (Multi-step form)
-import React, { useState, useRef } from 'react';
+// Sense Health — Premium Daily Log Screen (Immersive Multi-step)
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Animated, Dimensions,
@@ -7,25 +7,70 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Pedometer } from 'expo-sensors';
 import { useAuth } from '../context/AuthContext';
+import { getRealStepCount, getRealScreenTimeEstimate } from '../services/UsageTracker';
 import { dataAPI } from '../api/client';
 import Colors from '../theme/colors';
 import { Typography, Spacing, Radius, Shadows } from '../theme/typography';
+import Svg, { Path } from 'react-native-svg';
+import AnimatedEntry from '../components/animations/AnimatedEntry';
+import FloatingParticles from '../components/animations/FloatingParticles';
+import { JournalLeafSvg, WellnessHeroSvg, ShieldCheckSvg } from '../components/illustrations';
+import ReAnimated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+
+const SleepDecorationSvg = () => (
+  <View style={styles.cardBackgroundSvg}>
+    <Svg width={120} height={120} viewBox="0 0 24 24" fill="none">
+      <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#4A90E2" opacity={0.1} />
+    </Svg>
+  </View>
+);
+
+const ActivityDecorationSvg = () => (
+  <View style={styles.cardBackgroundSvg}>
+    <Svg width={120} height={120} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM10.5 4.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM12 9V6H8v3H5v4h3v6h3v-6h3V9h-2z" fill="#40C057" opacity={0.08} />
+    </Svg>
+  </View>
+);
+
+const NutritionDecorationSvg = () => (
+  <View style={styles.cardBackgroundSvg}>
+    <Svg width={120} height={120} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2L2 22h20L12 2zm0 3.8L19.2 18H4.8L12 5.8zM12 8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" fill="#E07A5F" opacity={0.08} />
+    </Svg>
+  </View>
+);
 
 const { width } = Dimensions.get('window');
-const STEPS = ['Sleep', 'Activity', 'Nutrition', 'Mental', 'Symptoms'];
+const STEPS = [
+  { key: 'Sleep', icon: 'moon', color: '#4A90E2', gradient: ['#4A90E2', '#357ABD'] },
+  { key: 'Activity', icon: 'footsteps', color: '#40C057', gradient: ['#40C057', '#82C91E'] },
+  { key: 'Nutrition', icon: 'nutrition', color: '#E07A5F', gradient: ['#E07A5F', '#F0A894'] },
+  { key: 'Mental', icon: 'heart', color: '#9013FE', gradient: ['#9013FE', '#BD10E0'] },
+  { key: 'Symptoms', icon: 'body', color: '#D96C6C', gradient: ['#D96C6C', '#F09090'] },
+];
 
 export default function LogScreen({ navigation }) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [slideDirection, setSlideDirection] = useState('right');
   const { grantedPermissions } = useAuth();
   
+  const progress = useSharedValue(1 / STEPS.length);
+
+  useEffect(() => {
+    progress.value = withSpring((step + 1) / STEPS.length, { damping: 15, stiffness: 100 });
+  }, [step]);
+
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
+
   const [activitySynced, setActivitySynced] = useState(false);
   const [screenTimeSynced, setScreenTimeSynced] = useState(false);
 
-  // Form data
   const [form, setForm] = useState({
     sleep: { hoursSlept: '', quality: 7, bedTime: '', wakeTime: '' },
     activity: { steps: '', exerciseMinutes: '', exerciseType: '', intensity: 'none' },
@@ -33,52 +78,87 @@ export default function LogScreen({ navigation }) {
     mental: { mood: 7, stressLevel: 3, anxietyLevel: 3, socialInteraction: 'moderate' },
     screenTime: { totalHours: '', socialMediaHours: '' },
     symptoms: [],
+    symptomsNotes: '',
     notes: '',
   });
+
+  useEffect(() => {
+    loadTodayData();
+  }, []);
+
+  const loadTodayData = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await dataAPI.getLog(today);
+      if (res.data && res.data.data) {
+        const log = res.data.data;
+        setForm({
+          sleep: {
+            hoursSlept: log.sleep?.hoursSlept != null ? log.sleep.hoursSlept.toString() : '',
+            quality: log.sleep?.quality || 7,
+            bedTime: log.sleep?.bedTime || '',
+            wakeTime: log.sleep?.wakeTime || '',
+          },
+          activity: {
+            steps: log.activity?.steps != null ? log.activity.steps.toString() : '',
+            exerciseMinutes: log.activity?.exerciseMinutes != null ? log.activity.exerciseMinutes.toString() : '',
+            exerciseType: log.activity?.exerciseType || '',
+            intensity: log.activity?.intensity || 'none',
+          },
+          nutrition: {
+            mealsCount: log.nutrition?.mealsCount != null ? log.nutrition.mealsCount.toString() : '3',
+            waterIntake: log.nutrition?.waterIntake != null ? (log.nutrition.waterIntake * 0.25).toString() : '',
+            junkFood: log.nutrition?.junkFood || false,
+            fruits: log.nutrition?.fruits || false,
+            caffeine: log.nutrition?.caffeine != null ? log.nutrition.caffeine.toString() : '0',
+          },
+          mental: {
+            mood: log.mental?.mood || 7,
+            stressLevel: log.mental?.stressLevel || 3,
+            anxietyLevel: log.mental?.anxietyLevel || 3,
+            socialInteraction: log.mental?.socialInteraction || 'moderate',
+          },
+          screenTime: {
+            totalHours: log.screenTime?.totalHours != null ? log.screenTime.totalHours.toString() : '',
+            socialMediaHours: log.screenTime?.socialMediaHours != null ? log.screenTime.socialMediaHours.toString() : '',
+          },
+          symptoms: log.symptoms || [],
+          symptomsNotes: log.symptomsNotes || '',
+          notes: log.notes || '',
+        });
+        
+        if (log.activity?.steps > 0) setActivitySynced(true);
+        if (log.screenTime?.totalHours > 0) setScreenTimeSynced(true);
+      }
+    } catch (err) {
+      console.log('No existing log found for today yet.');
+    }
+  };
 
   const [symptomSearch, setSymptomSearch] = useState('');
 
   const updateField = (section, field, value) => {
-    setForm(prev => ({
-      ...prev,
-      [section]: { ...prev[section], [field]: value },
-    }));
+    setForm(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   };
 
   const fetchAutomatedData = async (currentStep) => {
-    if (currentStep === 1 && grantedPermissions?.activity) { // Activity Step
+    if (currentStep === 1 && grantedPermissions?.activity) {
       try {
-        const isAvailable = await Pedometer.isAvailableAsync();
-        if (isAvailable || __DEV__) {
-          const end = new Date();
-          const start = new Date();
-          start.setHours(0, 0, 0, 0); // Midnight today
-          
-          let stepsValue = 5430; // Mock fallback
-          try {
-            const result = await Pedometer.getStepCountAsync(start, end);
-            if (result && result.steps) stepsValue = result.steps;
-          } catch(e) {}
-          
-          updateField('activity', 'steps', stepsValue.toString());
-          setActivitySynced(true);
-        }
-      } catch (err) {
-        console.log('Automated step tracking failed.', err);
-      }
-    } else if (currentStep === 4 && grantedPermissions?.screenTime) { // Screen Time Step
-      // Mocking screen time sync
-      updateField('screenTime', 'totalHours', '4.2');
-      setScreenTimeSynced(true);
+        const stepsValue = await getRealStepCount();
+        updateField('activity', 'steps', stepsValue.toString());
+        setActivitySynced(true);
+      } catch (err) { console.log('Step sync failed', err); }
+    } else if (currentStep === 4 && grantedPermissions?.screenTime) {
+      try {
+        const hoursValue = await getRealScreenTimeEstimate();
+        updateField('screenTime', 'totalHours', hoursValue.toString());
+        setScreenTimeSynced(true);
+      } catch (err) { console.log('Screen time sync failed', err); }
     }
   };
 
   const animateStep = (next) => {
-    const direction = next > step ? 1 : -1;
-    Animated.sequence([
-      Animated.timing(slideAnim, { toValue: -direction * 40, duration: 150, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start();
+    setSlideDirection(next > step ? 'right' : 'left');
     setStep(next);
     fetchAutomatedData(next);
   };
@@ -88,40 +168,43 @@ export default function LogScreen({ navigation }) {
     try {
       const payload = {
         sleep: {
-          hoursSlept: parseFloat(form.sleep.hoursSlept) || undefined,
+          hoursSlept: form.sleep.hoursSlept !== '' ? parseFloat(form.sleep.hoursSlept) : undefined,
           quality: form.sleep.quality,
           bedTime: form.sleep.bedTime || undefined,
           wakeTime: form.sleep.wakeTime || undefined,
         },
         activity: {
           steps: parseInt(form.activity.steps) || 0,
-          exerciseMinutes: parseInt(form.activity.exerciseMinutes) || 0,
+          exerciseMinutes: form.activity.exerciseMinutes !== '' ? parseInt(form.activity.exerciseMinutes) : 0,
           exerciseType: form.activity.exerciseType || undefined,
           intensity: form.activity.intensity,
         },
         nutrition: {
           mealsCount: parseInt(form.nutrition.mealsCount) || 3,
-          waterIntake: parseInt(form.nutrition.waterIntake) || 0,
+          waterIntake: form.nutrition.waterIntake !== '' ? Math.round(parseFloat(form.nutrition.waterIntake) / 0.25) : 0,
           junkFood: form.nutrition.junkFood,
           fruits: form.nutrition.fruits,
           caffeine: parseInt(form.nutrition.caffeine) || 0,
         },
         mental: form.mental,
         screenTime: {
-          totalHours: parseFloat(form.screenTime.totalHours) || 0,
-          socialMediaHours: parseFloat(form.screenTime.socialMediaHours) || 0,
+          totalHours: form.screenTime.totalHours !== '' ? parseFloat(form.screenTime.totalHours) : 0,
+          socialMediaHours: form.screenTime.socialMediaHours !== '' ? parseFloat(form.screenTime.socialMediaHours) : 0,
         },
         symptoms: form.symptoms.length > 0 ? form.symptoms : ['none'],
+        symptomsNotes: form.symptomsNotes || undefined,
         notes: form.notes || undefined,
       };
       await dataAPI.submitLog(payload);
-      Alert.alert('Success! 🌿', 'Your daily health log has been saved.', [
-        { text: 'OK', onPress: () => navigation.navigate('HomeTab') },
-      ]);
-    } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to save log');
-    } finally {
       setLoading(false);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        navigation.navigate('HomeTab');
+      }, 2500);
+    } catch (err) {
+      setLoading(false);
+      Alert.alert('Error', err.response?.data?.message || 'Failed to save log');
     }
   };
 
@@ -129,7 +212,9 @@ export default function LogScreen({ navigation }) {
     <View style={styles.sliderGroup}>
       <View style={styles.sliderHeader}>
         <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={[styles.sliderValue, { color: getSliderColor(value, min, max, field) }]}>{value}</Text>
+        <View style={[styles.sliderValueBadge, { backgroundColor: getSliderColor(value, min, max, field) + '20' }]}>
+          <Text style={[styles.sliderValue, { color: getSliderColor(value, min, max, field) }]}>{value}</Text>
+        </View>
       </View>
       {labels && (
         <View style={styles.sliderLabels}>
@@ -154,25 +239,22 @@ export default function LogScreen({ navigation }) {
 
   const symptomOptions = ['headache', 'fatigue', 'nausea', 'dizziness', 'chest_pain', 'shortness_of_breath', 'muscle_pain', 'fever', 'cough', 'sore_throat', 'brain_fog', 'eye_strain', 'back_pain'];
   const toggleSymptom = (s) => setForm(prev => ({
-    ...prev,
-    symptoms: prev.symptoms.includes(s) ? prev.symptoms.filter(x => x !== s) : [...prev.symptoms, s],
+    ...prev, symptoms: prev.symptoms.includes(s) ? prev.symptoms.filter(x => x !== s) : [...prev.symptoms, s],
   }));
 
   const intensityOptions = ['none', 'low', 'moderate', 'high'];
-  const socialOptions = ['none', 'minimal', 'moderate', 'high'];
+
+  const currentStepConfig = STEPS[step];
 
   const renderStep = () => {
     switch (step) {
       case 0:
         return (
           <View style={styles.stepContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: Colors.secondarySoft }]}>
-              <Ionicons name="moon" size={32} color={Colors.secondary} />
-            </View>
-            <Text style={styles.conversationalTitle}>How did you sleep last night?</Text>
+            <Text style={styles.conversationalTitle}>How did you sleep?</Text>
             <Text style={styles.conversationalSub}>Quality rest is the foundation of cognitive health.</Text>
-            
             <View style={styles.card}>
+              <SleepDecorationSvg />
               <InputField label="Hours Slept" placeholder="e.g. 7.5" value={form.sleep.hoursSlept}
                 onChangeText={v => updateField('sleep', 'hoursSlept', v)} keyboardType="decimal-pad" icon="time-outline" />
               <SliderRow label="Sleep Quality" value={form.sleep.quality} min={1} max={10} section="sleep" field="quality" labels={['Poor', 'Excellent']} />
@@ -182,29 +264,24 @@ export default function LogScreen({ navigation }) {
       case 1:
         return (
           <View style={styles.stepContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: Colors.primarySoft }]}>
-              <Ionicons name="footsteps" size={32} color={Colors.primary} />
-            </View>
             <Text style={styles.conversationalTitle}>Were you active today?</Text>
             <Text style={styles.conversationalSub}>Movement helps process stress hormones.</Text>
-            
             <View style={styles.card}>
+              <ActivityDecorationSvg />
               {activitySynced ? (
                 <View style={styles.syncedBox}>
-                  <View style={styles.autoSyncBadge}>
-                    <Ionicons name="sparkles" size={14} color={Colors.primary} />
+                  <LinearGradient colors={Colors.gradientEmerald} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.autoSyncBadge}>
+                    <Ionicons name="sparkles" size={12} color="#FFFFFF" />
                     <Text style={styles.autoSyncText}>Auto-synced from device</Text>
-                  </View>
+                  </LinearGradient>
                   <Text style={styles.syncedValue}>{form.activity.steps} Steps Today</Text>
                 </View>
               ) : (
                 <InputField label="Steps" placeholder="e.g. 8000" value={form.activity.steps}
                   onChangeText={v => updateField('activity', 'steps', v)} keyboardType="numeric" icon="walk-outline" />
               )}
-              
               <InputField label="Exercise Minutes" placeholder="e.g. 30" value={form.activity.exerciseMinutes}
                 onChangeText={v => updateField('activity', 'exerciseMinutes', v)} keyboardType="numeric" icon="barbell-outline" />
-              
               <Text style={styles.chipGroupLabel}>Intensity</Text>
               <View style={styles.chipRow}>
                 {intensityOptions.map(opt => (
@@ -222,15 +299,16 @@ export default function LogScreen({ navigation }) {
       case 2:
         return (
           <View style={styles.stepContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: Colors.warmSoft }]}>
-              <Ionicons name="nutrition" size={32} color={Colors.warm} />
-            </View>
-            <Text style={styles.conversationalTitle}>How did you fuel your body?</Text>
+            <Text style={styles.conversationalTitle}>How did you fuel up?</Text>
             <Text style={styles.conversationalSub}>Hydration and nutrition directly impact focus.</Text>
-            
             <View style={styles.card}>
-              <InputField label="Water Intake (glasses)" placeholder="e.g. 8" value={form.nutrition.waterIntake}
-                onChangeText={v => updateField('nutrition', 'waterIntake', v)} keyboardType="numeric" icon="water-outline" />
+              <NutritionDecorationSvg />
+              <InputField label="Water Intake (Litres)" placeholder="e.g. 2.0" value={form.nutrition.waterIntake}
+                onChangeText={v => updateField('nutrition', 'waterIntake', v)} keyboardType="decimal-pad" icon="water-outline" />
+              <View style={styles.helperBox}>
+                <Ionicons name="information-circle" size={14} color={Colors.primary} />
+                <Text style={styles.helperText}>1 standard glass = 0.25 L  •  8 glasses = 2.0 L</Text>
+              </View>
               <InputField label="Caffeine (cups)" placeholder="e.g. 2" value={form.nutrition.caffeine}
                 onChangeText={v => updateField('nutrition', 'caffeine', v)} keyboardType="numeric" icon="cafe-outline" />
               <View style={styles.toggleRow}>
@@ -243,13 +321,10 @@ export default function LogScreen({ navigation }) {
       case 3:
         return (
           <View style={styles.stepContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: Colors.accentSoft }]}>
-              <Ionicons name="heart" size={32} color={Colors.accent} />
-            </View>
             <Text style={styles.conversationalTitle}>How is your mind?</Text>
             <Text style={styles.conversationalSub}>Take a moment to check in with yourself.</Text>
-            
             <View style={styles.card}>
+              <JournalLeafSvg width={120} height={120} style={styles.cardBackgroundSvg} />
               <SliderRow label="Overall Mood" value={form.mental.mood} min={1} max={10} section="mental" field="mood" labels={['Very Low', 'Excellent']} />
               <SliderRow label="Stress Level" value={form.mental.stressLevel} min={1} max={10} section="mental" field="stressLevel" labels={['Calm', 'Overwhelmed']} />
               <SliderRow label="Anxiety Level" value={form.mental.anxietyLevel} min={1} max={10} section="mental" field="anxietyLevel" labels={['Calm', 'High']} />
@@ -260,25 +335,15 @@ export default function LogScreen({ navigation }) {
         const filteredSymptoms = symptomOptions.filter(s => s.replace('_', ' ').includes(symptomSearch.toLowerCase()));
         return (
           <View style={styles.stepContainer}>
-            <View style={[styles.iconCircle, { backgroundColor: '#FFEBEE' }]}>
-              <Ionicons name="body" size={32} color={Colors.riskCritical} />
-            </View>
-            <Text style={styles.conversationalTitle}>Any physical symptoms?</Text>
+            <Text style={styles.conversationalTitle}>Any symptoms?</Text>
             <Text style={styles.conversationalSub}>Select anything that feels off today.</Text>
-            
             <View style={styles.card}>
+              <ShieldCheckSvg width={120} height={120} style={styles.cardBackgroundSvg} />
               <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={Colors.textTertiary} />
-                <TextInput 
-                  style={styles.searchInput} 
-                  placeholder="Search symptoms..." 
-                  value={symptomSearch} 
-                  onChangeText={setSymptomSearch}
-                  placeholderTextColor={Colors.textTertiary}
-                />
+                <Ionicons name="search" size={18} color={Colors.textTertiary} />
+                <TextInput style={styles.searchInput} placeholder="Search symptoms..."
+                  value={symptomSearch} onChangeText={setSymptomSearch} placeholderTextColor={Colors.textTertiary} />
               </View>
-              
-              <Text style={styles.chipGroupLabel}>Quick Chips</Text>
               <View style={styles.chipRow}>
                 {filteredSymptoms.map(s => (
                   <TouchableOpacity key={s} style={[styles.chip, form.symptoms.includes(s) && styles.chipActiveWarn]}
@@ -289,14 +354,26 @@ export default function LogScreen({ navigation }) {
                   </TouchableOpacity>
                 ))}
               </View>
-              
+
+              {/* Custom Symptom Description in words */}
+              <View style={{ marginTop: Spacing.xl, borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: Spacing.xl }}>
+                <InputField 
+                  label="Describe Symptoms in Words" 
+                  placeholder="Describe how you feel (e.g. slight sore throat since 3 PM, dull headache behind my eyes)..." 
+                  value={form.symptomsNotes}
+                  onChangeText={v => setForm(prev => ({ ...prev, symptomsNotes: v }))} 
+                  icon="chatbox-ellipses-outline"
+                  multiline
+                />
+              </View>
+
               <View style={{ marginTop: Spacing.xl }}>
                 {screenTimeSynced ? (
                   <View style={styles.syncedBox}>
-                    <View style={[styles.autoSyncBadge, { backgroundColor: Colors.secondarySoft }]}>
-                      <Ionicons name="sparkles" size={14} color={Colors.secondary} />
-                      <Text style={[styles.autoSyncText, { color: Colors.secondary }]}>Auto-synced from device</Text>
-                    </View>
+                    <LinearGradient colors={Colors.gradientSecondary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.autoSyncBadge}>
+                      <Ionicons name="sparkles" size={12} color="#FFFFFF" />
+                      <Text style={styles.autoSyncText}>Auto-synced from device</Text>
+                    </LinearGradient>
                     <Text style={styles.syncedValue}>{form.screenTime.totalHours} Hours Screen Time</Text>
                   </View>
                 ) : (
@@ -311,47 +388,76 @@ export default function LogScreen({ navigation }) {
     }
   };
 
-  return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      {/* Progress indicator */}
-      <View style={styles.progressHeader}>
-        <View style={styles.progressDots}>
-          {STEPS.map((_, i) => (
-            <View key={i} style={[styles.dot, i === step ? styles.dotActive : (i < step ? styles.dotCompleted : null)]} />
-          ))}
-        </View>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={28} color={Colors.textSecondary} />
-        </TouchableOpacity>
+  if (showSuccess) {
+    return (
+      <View style={styles.successOverlay}>
+        <FloatingParticles count={25} colors={['#FFD700', '#FF69B4', '#00FFFF', '#32CD32', '#FF4500']} containerHeight={Dimensions.get('window').height} />
+        <AnimatedEntry preset="bounce" style={styles.successCard}>
+          <LinearGradient colors={Colors.gradientTeal} style={styles.successGradient}>
+            <Ionicons name="checkmark-circle" size={80} color="#FFFFFF" style={{ marginBottom: Spacing.md }} />
+            <Text style={styles.successTitle}>Log Completed! 🌿</Text>
+            <Text style={styles.successSubtitle}>Your daily health metrics are safely stored and synced.</Text>
+          </LinearGradient>
+        </AnimatedEntry>
       </View>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* ── Gradient Header with Progress ── */}
+      <LinearGradient colors={currentStepConfig.gradient} style={styles.progressHeader}>
+        <View style={styles.progressHeaderTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBackBtn}>
+            <Ionicons name="close" size={24} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+          <View style={styles.stepIndicator}>
+            <Ionicons name={currentStepConfig.icon} size={18} color="#FFFFFF" />
+            <Text style={styles.stepIndicatorText}>{currentStepConfig.key}</Text>
+          </View>
+          <Text style={styles.stepCounter}>{step + 1}/{STEPS.length}</Text>
+        </View>
+        {/* Gradient progress bar */}
+        <View style={styles.progressBarBg}>
+          <ReAnimated.View style={[styles.progressBarFill, progressStyle]}>
+            <LinearGradient colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.5)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+          </ReAnimated.View>
+        </View>
+      </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
+        <AnimatedEntry preset={slideDirection === 'right' ? 'fadeRight' : 'fadeLeft'} key={step}>
           {renderStep()}
-        </Animated.View>
-      </ScrollView>
+        </AnimatedEntry>
 
-      {/* Navigation buttons */}
-      <View style={styles.navBottom}>
-        {step > 0 ? (
-          <TouchableOpacity style={styles.backBtn} onPress={() => animateStep(step - 1)}>
-            <Ionicons name="arrow-back" size={24} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        ) : <View style={{ width: 48 }} />}
-        
-        {step < STEPS.length - 1 ? (
-          <TouchableOpacity style={styles.nextBtn} onPress={() => animateStep(step + 1)} activeOpacity={0.8}>
-            <Text style={styles.nextBtnText}>Continue</Text>
-            <Ionicons name="arrow-forward" size={20} color={Colors.textInverse} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={[styles.nextBtn, { backgroundColor: Colors.primary }]} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
-            {loading ? <ActivityIndicator color="#fff" /> : (
-              <><Text style={styles.nextBtnText}>Complete Log</Text><Ionicons name="checkmark" size={20} color={Colors.textInverse} /></>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
+        <View style={{ flex: 1 }} />
+
+        {/* ── Bottom Navigation ── */}
+        <View style={styles.navBottom}>
+          {step > 0 ? (
+            <TouchableOpacity style={styles.backBtn} onPress={() => animateStep(step - 1)}>
+              <Ionicons name="arrow-back" size={22} color={Colors.text} />
+            </TouchableOpacity>
+          ) : <View style={{ width: 48 }} />}
+
+          {step < STEPS.length - 1 ? (
+            <TouchableOpacity style={styles.nextBtnWrap} onPress={() => animateStep(step + 1)} activeOpacity={0.8}>
+              <LinearGradient colors={currentStepConfig.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtn}>
+                <Text style={styles.nextBtnText}>Continue</Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.nextBtnWrap} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
+              <LinearGradient colors={Colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtn}>
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <><Text style={styles.nextBtnText}>Complete Log</Text><Ionicons name="checkmark" size={18} color="#FFFFFF" /></>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -361,7 +467,7 @@ function InputField({ label, placeholder, value, onChangeText, keyboardType, ico
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
       <View style={[styles.inputWrapper, multiline && { height: 100, alignItems: 'flex-start', paddingTop: Spacing.md }]}>
-        <Ionicons name={icon} size={20} color={Colors.textSecondary} style={{ marginRight: Spacing.md }} />
+        <Ionicons name={icon} size={18} color={Colors.textSecondary} style={{ marginRight: Spacing.md }} />
         <TextInput style={[styles.input, multiline && { textAlignVertical: 'top' }]} placeholder={placeholder}
           placeholderTextColor={Colors.textTertiary} value={value} onChangeText={onChangeText}
           keyboardType={keyboardType} multiline={multiline} />
@@ -379,51 +485,164 @@ function ToggleChip({ label, active, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, paddingTop: 60 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.xxl, marginBottom: Spacing.xxl },
-  progressDots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.border },
-  dotActive: { width: 24, backgroundColor: Colors.primary },
-  dotCompleted: { backgroundColor: Colors.primaryLight },
-  scrollContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 100 },
+  container: { flex: 1, backgroundColor: Colors.background },
+
+  // ── Gradient Progress Header ──
+  progressHeader: {
+    paddingTop: 56, paddingBottom: Spacing.lg, paddingHorizontal: Spacing.xxl,
+  },
+  progressHeaderTop: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  headerBackBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stepIndicator: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: Radius.full,
+  },
+  stepIndicatorText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  stepCounter: { color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: 13 },
+  progressBarBg: {
+    height: 6, backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3, overflow: 'hidden',
+  },
+  progressBarFill: { height: '100%', borderRadius: 3, overflow: 'hidden' },
+
+  scrollContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 80, paddingTop: Spacing.xl, flexGrow: 1 },
   stepContainer: { alignItems: 'center' },
-  iconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.xl },
   conversationalTitle: { ...Typography.displayMedium, color: Colors.text, textAlign: 'center', marginBottom: Spacing.xs },
-  conversationalSub: { ...Typography.bodyLarge, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.xxxl },
-  card: { width: '100%', backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: Spacing.xl, ...Shadows.medium },
+  conversationalSub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.xxl },
+
+  card: {
+    width: '100%', backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    padding: Spacing.xl, ...Shadows.medium, borderWidth: 1, borderColor: Colors.borderLight,
+  },
   inputGroup: { marginBottom: Spacing.xl },
-  inputLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.lg, height: 56 },
-  input: { flex: 1, ...Typography.bodyLarge, color: Colors.text },
+  inputLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm, fontSize: 11 },
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg, height: 52,
+  },
+  input: { flex: 1, ...Typography.body, color: Colors.text },
+
   sliderGroup: { marginBottom: Spacing.xxl },
   sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
-  sliderLabel: { ...Typography.label, color: Colors.textSecondary },
-  sliderValue: { ...Typography.numberSmall },
+  sliderLabel: { ...Typography.label, color: Colors.textSecondary, fontSize: 11 },
+  sliderValueBadge: {
+    paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full,
+  },
+  sliderValue: { ...Typography.numberSmall, fontSize: 18 },
   sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.sm },
-  sliderMinLabel: { ...Typography.caption, color: Colors.textTertiary },
-  sliderMaxLabel: { ...Typography.caption, color: Colors.textTertiary },
-  sliderTrack: { flexDirection: 'row', gap: 6 },
-  sliderDot: { flex: 1, height: 12, borderRadius: 6, backgroundColor: Colors.border },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: Radius.full, paddingHorizontal: Spacing.lg, height: 48, marginBottom: Spacing.lg },
-  searchInput: { flex: 1, marginLeft: Spacing.md, ...Typography.body },
-  chipGroupLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.md },
+  sliderMinLabel: { ...Typography.caption, color: Colors.textTertiary, fontSize: 10 },
+  sliderMaxLabel: { ...Typography.caption, color: Colors.textTertiary, fontSize: 10 },
+  sliderTrack: { flexDirection: 'row', gap: 4 },
+  sliderDot: { flex: 1, height: 10, borderRadius: 5, backgroundColor: Colors.border },
+
+  searchContainer: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background,
+    borderRadius: Radius.full, paddingHorizontal: Spacing.lg, height: 44, marginBottom: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  searchInput: { flex: 1, marginLeft: Spacing.sm, ...Typography.bodySmall, color: Colors.text },
+
+  chipGroupLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.md, fontSize: 11 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  chip: { paddingHorizontal: Spacing.lg, paddingVertical: 10, borderRadius: Radius.full, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border },
+  chip: {
+    paddingHorizontal: Spacing.lg, paddingVertical: 9, borderRadius: Radius.full,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  },
   chipActive: { backgroundColor: Colors.primarySoft, borderColor: Colors.primary },
   chipActiveWarn: { backgroundColor: '#FFEBEE', borderColor: Colors.riskCritical },
-  chipText: { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '500' },
+  chipText: { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '500', fontSize: 13 },
   chipTextActive: { color: Colors.text, fontWeight: '600' },
+
   toggleRow: { flexDirection: 'row', gap: Spacing.md },
-  toggleBtn: { flex: 1, alignItems: 'center', paddingVertical: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border },
+  toggleBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: Spacing.md, borderRadius: Radius.md,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  },
   toggleBtnActive: { backgroundColor: Colors.primarySoft, borderColor: Colors.primary },
   toggleBtnText: { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '500' },
   toggleBtnTextActive: { color: Colors.primaryDark, fontWeight: '600' },
-  navBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.xl, backgroundColor: Colors.surface, ...Shadows.large },
-  backBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
-  nextBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.text, paddingHorizontal: Spacing.xl, paddingVertical: 14, borderRadius: Radius.full, gap: Spacing.sm },
-  nextBtnText: { ...Typography.button, color: Colors.textInverse },
-  syncedBox: { backgroundColor: Colors.background, padding: Spacing.lg, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xl },
+
+  helperBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.primarySoft, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    marginTop: -Spacing.md, marginBottom: Spacing.lg,
+  },
+  helperText: { ...Typography.caption, color: Colors.primaryDark, fontSize: 11, fontWeight: '500' },
+
+  // Bottom Nav
+  navBottom: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: Spacing.lg, marginTop: Spacing.xl,
+  },
+  backBtn: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.background,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border,
+  },
+  nextBtnWrap: { flex: 1, marginLeft: Spacing.md, borderRadius: Radius.full, overflow: 'hidden' },
+  nextBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, gap: Spacing.sm,
+  },
+  nextBtnText: { ...Typography.button, color: '#FFFFFF', fontSize: 16 },
+
+  syncedBox: {
+    backgroundColor: Colors.background, padding: Spacing.lg, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.borderLight, marginBottom: Spacing.xl,
+  },
   syncedValue: { ...Typography.h2, color: Colors.text, marginTop: Spacing.sm },
-  autoSyncBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primarySoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, alignSelf: 'flex-start', gap: 4 },
-  autoSyncText: { ...Typography.caption, color: Colors.primaryDark, fontWeight: '600' }
+  autoSyncBadge: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: Radius.full, alignSelf: 'flex-start', gap: 4,
+  },
+  autoSyncText: { ...Typography.caption, color: '#FFFFFF', fontWeight: '700', fontSize: 10 },
+  
+  // Custom decorations & Success overlay
+  cardBackgroundSvg: {
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
+    opacity: 0.12,
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10, 25, 41, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  successCard: {
+    width: width - Spacing.xxl * 2,
+    borderRadius: Radius.xl,
+    overflow: 'hidden',
+    ...Shadows.large,
+  },
+  successGradient: {
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: {
+    ...Typography.h1,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+    fontSize: 22,
+  },
+  successSubtitle: {
+    ...Typography.body,
+    color: 'rgba(255, 255, 255, 0.85)',
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+  },
 });

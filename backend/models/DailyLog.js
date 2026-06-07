@@ -69,10 +69,19 @@ const dailyLogSchema = new mongoose.Schema({
     enum: [
       'headache', 'fatigue', 'nausea', 'dizziness',
       'chest_pain', 'shortness_of_breath', 'muscle_pain',
-      'fever', 'cough', 'sore_throat', 'none'
+      'fever', 'cough', 'sore_throat', 'brain_fog', 
+      'eye_strain', 'back_pain', 'none'
     ]
   }],
 
+  cognitive: {
+    reactionTime: Number,      // average reaction time of the day in ms
+    memoryScore: Number,       // max memory sequence achieved today
+    colorScore: Number,        // average color match score today
+    gamesPlayed: { type: Number, default: 0 }
+  },
+
+  symptomsNotes: String,
   notes: String
 
 }, {

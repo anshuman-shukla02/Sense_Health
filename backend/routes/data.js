@@ -2,19 +2,43 @@ const express = require('express');
 const DailyLog = require('../models/DailyLog');
 const Baseline = require('../models/Baseline');
 const User = require('../models/User');
+const GameSession = require('../models/GameSession');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Helper to normalize dates consistently to local midnight without timezone offset issues
+const parseDateNormalized = (dateInput) => {
+  if (!dateInput) {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  if (typeof dateInput === 'string' && dateInput.includes('-')) {
+    const parts = dateInput.split('T')[0].split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+  }
+  const d = new Date(dateInput);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+};
 
 // @route   POST /api/data/log
 // @desc    Submit a daily behavioral log
 router.post('/log', protect, async (req, res) => {
   try {
-    const { sleep, activity, nutrition, mental, vitals, screenTime, symptoms, notes, date } = req.body;
+    const { sleep, activity, nutrition, mental, vitals, screenTime, symptoms, symptomsNotes, notes, date } = req.body;
 
-    // Use provided date or today
-    const logDate = date ? new Date(date) : new Date();
-    const normalizedDate = new Date(logDate.getFullYear(), logDate.getMonth(), logDate.getDate());
+    const normalizedDate = parseDateNormalized(date);
+    const normalizedToday = parseDateNormalized();
+
+    // Prevent creating/updating logs for past dates
+    if (normalizedDate < normalizedToday) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update or create logs for past dates.'
+      });
+    }
 
     // Upsert — update if exists, create if not
     const log = await DailyLog.findOneAndUpdate(
@@ -22,7 +46,7 @@ router.post('/log', protect, async (req, res) => {
       {
         user: req.user.id,
         date: normalizedDate,
-        sleep, activity, nutrition, mental, vitals, screenTime, symptoms, notes
+        sleep, activity, nutrition, mental, vitals, screenTime, symptoms, symptomsNotes, notes
       },
       { new: true, upsert: true, runValidators: true }
     );
@@ -69,8 +93,7 @@ router.get('/logs', protect, async (req, res) => {
 // @desc    Get a specific day's log
 router.get('/log/:date', protect, async (req, res) => {
   try {
-    const date = new Date(req.params.date);
-    const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const normalizedDate = parseDateNormalized(req.params.date);
 
     const log = await DailyLog.findOne({ user: req.user.id, date: normalizedDate });
 
@@ -96,6 +119,78 @@ router.get('/baseline', protect, async (req, res) => {
       });
     }
     res.json({ success: true, data: baseline });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   POST /api/data/game
+// @desc    Submit a game session result
+router.post('/game', protect, async (req, res) => {
+  try {
+    const { gameId, score, accuracy } = req.body;
+
+    if (!gameId || score === undefined) {
+      return res.status(400).json({ success: false, message: 'gameId and score are required' });
+    }
+
+    // Create new game session
+    const session = await GameSession.create({
+      user: req.user.id,
+      gameId,
+      score,
+      accuracy,
+      date: new Date()
+    });
+
+    // Fetch or create DailyLog for today
+    const now = new Date();
+    const normalizedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let log = await DailyLog.findOne({ user: req.user.id, date: normalizedDate });
+    if (!log) {
+      log = new DailyLog({ user: req.user.id, date: normalizedDate });
+    }
+
+    if (!log.cognitive) {
+      log.cognitive = { reactionTime: null, memoryScore: null, colorScore: null, gamesPlayed: 0 };
+    }
+
+    // Update specific game scores
+    if (gameId === 'reaction') {
+      if (log.cognitive.reactionTime) {
+        log.cognitive.reactionTime = Math.round((log.cognitive.reactionTime + score) / 2);
+      } else {
+        log.cognitive.reactionTime = score;
+      }
+    } else if (gameId === 'memory') {
+      log.cognitive.memoryScore = Math.max(log.cognitive.memoryScore || 0, score);
+    } else if (gameId === 'color') {
+      if (log.cognitive.colorScore) {
+        log.cognitive.colorScore = Math.round((log.cognitive.colorScore + score) / 2);
+      } else {
+        log.cognitive.colorScore = score;
+      }
+    }
+
+    log.cognitive.gamesPlayed = (log.cognitive.gamesPlayed || 0) + 1;
+    await log.save();
+
+    // Trigger baseline update
+    await updateBaseline(req.user.id);
+
+    res.status(201).json({ success: true, session, log });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   GET /api/data/game/history
+// @desc    Get user's game sessions
+router.get('/game/history', protect, async (req, res) => {
+  try {
+    const sessions = await GameSession.find({ user: req.user.id }).sort({ date: -1 }).limit(50);
+    res.json({ success: true, count: sessions.length, data: sessions });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -147,6 +242,11 @@ async function updateBaseline(userId) {
     screenTime: {
       avgTotalHours: avg(safeValues(logs, 'screenTime.totalHours')),
       avgSocialMediaHours: avg(safeValues(logs, 'screenTime.socialMediaHours'))
+    },
+    cognitive: {
+      avgReactionTime: avg(safeValues(logs, 'cognitive.reactionTime')),
+      avgMemoryScore: avg(safeValues(logs, 'cognitive.memoryScore')),
+      avgColorScore: avg(safeValues(logs, 'cognitive.colorScore'))
     },
     dataPointsUsed: logs.length,
     lastUpdated: new Date(),

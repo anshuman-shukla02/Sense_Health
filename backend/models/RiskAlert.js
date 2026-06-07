@@ -22,7 +22,7 @@ const riskAlertSchema = new mongoose.Schema({
   categories: [{
     name: {
       type: String,
-      enum: ['sleep', 'activity', 'nutrition', 'mental', 'vitals', 'screenTime']
+      enum: ['sleep', 'activity', 'nutrition', 'mental', 'vitals', 'screenTime', 'cognitive']
     },
     score: Number,      // 0-100
     deviation: Number,  // % deviation from baseline

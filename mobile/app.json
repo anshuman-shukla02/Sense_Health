@@ -2,6 +2,7 @@
   "expo": {
     "name": "Sense Health",
     "slug": "sense-health",
+    "scheme": "sensehealth",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,9 +14,11 @@
       "backgroundColor": "#4CAF7D"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anshuman.sensehealth"
     },
     "android": {
+      "package": "com.anshuman.sensehealth",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -26,7 +29,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-notifications",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.238840495825-no2d7c5nbu8knh7iultvi6uuplj2hl4g"
+        }
+      ],
+      "expo-web-browser"
     ]
   }
 }

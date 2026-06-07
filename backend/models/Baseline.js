@@ -37,6 +37,12 @@ const baselineSchema = new mongoose.Schema({
     avgSocialMediaHours: Number
   },
 
+  cognitive: {
+    avgReactionTime: Number,
+    avgMemoryScore: Number,
+    avgColorScore: Number
+  },
+
   dataPointsUsed: { type: Number, default: 0 },
   lastUpdated: { type: Date, default: Date.now },
   isReliable: { type: Boolean, default: false } // true when 7+ data points

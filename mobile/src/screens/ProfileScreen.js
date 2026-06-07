@@ -1,9 +1,9 @@
-// Sense Health — Profile Screen
-import React, { useState } from 'react';
+// Sense Health — Premium Profile Screen
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, ImageBackground,
-  Platform, KeyboardAvoidingView
+  TextInput, Alert, ActivityIndicator, Animated,
+  Platform, KeyboardAvoidingView, Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,12 +11,40 @@ import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../api/client';
 import Colors from '../theme/colors';
 import { Typography, Spacing, Radius, Shadows } from '../theme/typography';
+import FloatingParticles from '../components/animations/FloatingParticles';
+import AnimatedEntry from '../components/animations/AnimatedEntry';
+import AnimatedCounter from '../components/animations/AnimatedCounter';
+import { HealthPulseSvg } from '../components/illustrations';
+import ReAnimated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, Layout } from 'react-native-reanimated';
+
+const { width } = Dimensions.get('window');
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 50, friction: 12, useNativeDriver: true }),
+    ]).start();
+    
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 8000, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, []);
+
+  const animatedRingStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
   const [form, setForm] = useState({
     name: user?.name || '',
     age: user?.age?.toString() || '',
@@ -55,42 +83,78 @@ export default function ProfileScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        
-        {/* Dynamic Header */}
-        <LinearGradient colors={[Colors.primarySoft, Colors.background]} style={styles.header}>
-          <View style={styles.headerTopRow}>
-            <Text style={styles.headerGreeting}>Hello, {firstName}</Text>
-            <TouchableOpacity style={styles.logoutIconBtn} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.avatarContainer}>
-            <LinearGradient colors={Colors.gradientPrimary} style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{firstName.charAt(0).toUpperCase()}</Text>
-            </LinearGradient>
-            <View style={styles.headerInfo}>
+
+        {/* ── Dark Gradient Hero ── */}
+        <LinearGradient colors={Colors.gradientHeaderDark} style={styles.header}>
+          <HealthPulseSvg width={width} height={180} style={styles.headerPulse} />
+          <FloatingParticles count={10} containerHeight={240} />
+
+          <AnimatedEntry preset="fadeUp" duration={600}>
+            {/* Top row */}
+            <View style={styles.headerTopRow}>
+              <Text style={styles.headerGreeting}>Profile</Text>
+              <TouchableOpacity style={styles.logoutIconBtn} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={20} color="rgba(255,255,255,0.7)" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Avatar + Info */}
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarContainer}>
+                <ReAnimated.View style={[styles.avatarRing, animatedRingStyle]}>
+                  <LinearGradient colors={['#52A8A2', '#9013FE', '#BD10E0']} style={StyleSheet.absoluteFill} />
+                </ReAnimated.View>
+                <LinearGradient colors={Colors.gradientPrimary} style={styles.avatarCircle}>
+                  <Text style={styles.avatarText}>{firstName.charAt(0).toUpperCase()}</Text>
+                </LinearGradient>
+              </View>
               <Text style={styles.headerName}>{user?.name || 'Your Name'}</Text>
               <Text style={styles.headerEmail}>{user?.email || 'email@example.com'}</Text>
-              <View style={styles.badge}>
-                <Ionicons name="shield-checkmark" size={14} color={Colors.primary} />
-                <Text style={styles.badgeText}>Verified Member</Text>
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="shield-checkmark" size={12} color={Colors.primary} />
+                <Text style={styles.verifiedBadgeText}>Verified Member</Text>
               </View>
             </View>
-          </View>
+
+            {/* Stats Row */}
+            <View style={styles.statsRow}>
+              {[
+                { icon: 'calendar', value: '14', label: 'Days Logged' },
+                { icon: 'heart', value: user?.baselineEstablished ? 'Active' : 'Setup', label: 'Baseline' },
+                { icon: 'flame', value: '7', label: 'Day Streak' },
+              ].map((stat, idx) => (
+                <View key={idx} style={styles.statItem}>
+                  <View style={styles.statIconCircle}>
+                    <Ionicons name={stat.icon} size={14} color="#FFFFFF" />
+                  </View>
+                  {isNaN(stat.value) ? (
+                    <Text style={styles.statValue}>{stat.value}</Text>
+                  ) : (
+                    <AnimatedCounter value={parseInt(stat.value)} style={styles.statValue} />
+                  )}
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </AnimatedEntry>
         </LinearGradient>
 
-        <View style={styles.content}>
-          {/* Main Info Card */}
+        {/* ── Content ── */}
+        <AnimatedEntry preset="fade" style={styles.content}>
+
+          {/* Personal Details Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="person-circle" size={24} color={Colors.primary} />
+              <View style={styles.cardHeaderLeft}>
+                <LinearGradient colors={Colors.gradientPrimary} style={styles.cardIconGradient}>
+                  <Ionicons name="person" size={16} color="#FFFFFF" />
+                </LinearGradient>
                 <Text style={styles.cardTitle}>Personal Details</Text>
               </View>
               {!editing && (
-                <TouchableOpacity onPress={() => setEditing(true)} style={styles.actionBtn}>
-                  <Ionicons name="pencil" size={18} color={Colors.textInverse} />
+                <TouchableOpacity onPress={() => setEditing(true)} style={styles.editBtn}>
+                  <Ionicons name="pencil" size={14} color={Colors.primary} />
+                  <Text style={styles.editBtnText}>Edit</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -150,41 +214,59 @@ export default function ProfileScreen() {
             </ProfileRow>
 
             {editing && (
-              <TouchableOpacity style={styles.saveBtnBottom} onPress={handleSave}>
-                {loading ? <ActivityIndicator size="small" color={Colors.textInverse} /> : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.textInverse} />
-                    <Text style={styles.saveBtnTextBottom}>Save Changes</Text>
-                  </>
-                )}
+              <TouchableOpacity style={styles.saveBtnWrap} onPress={handleSave}>
+                <LinearGradient colors={Colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.saveBtn}>
+                  {loading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                      <Text style={styles.saveBtnText}>Save Changes</Text>
+                    </>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
             )}
           </View>
 
-          {/* Health Status Card */}
+          {/* System Status Card */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="pulse" size={24} color={Colors.accent} />
+              <View style={styles.cardHeaderLeft}>
+                <LinearGradient colors={user?.baselineEstablished ? Colors.gradientEmerald : Colors.gradientWarm} style={styles.cardIconGradient}>
+                  <Ionicons name="pulse" size={16} color="#FFFFFF" />
+                </LinearGradient>
                 <Text style={styles.cardTitle}>System Status</Text>
               </View>
             </View>
             <View style={styles.statusBox}>
-              <View style={[styles.statusIndicator, { backgroundColor: user?.baselineEstablished ? Colors.success : Colors.warning }]} />
-              <View style={{ flex: 1 }}>
+              <View style={styles.statusBoxLeft}>
                 <Text style={styles.statusBoxTitle}>
                   {user?.baselineEstablished ? 'Baseline Active' : 'Calibration Mode'}
                 </Text>
                 <Text style={styles.statusBoxDesc}>
-                  {user?.baselineEstablished 
-                    ? 'AI analysis is actively monitoring your health trends.' 
+                  {user?.baselineEstablished
+                    ? 'AI analysis is actively monitoring your health trends.'
                     : 'Logging data daily helps establish your health baseline.'}
                 </Text>
+              </View>
+              {/* Status bar */}
+              <View style={styles.statusBarBg}>
+                <LinearGradient
+                  colors={user?.baselineEstablished ? Colors.gradientEmerald : Colors.gradientWarm}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.statusBarFill, { width: user?.baselineEstablished ? '100%' : '40%' }]}
+                />
               </View>
             </View>
           </View>
 
-        </View>
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={18} color={Colors.riskCritical} />
+            <Text style={styles.logoutBtnText}>Sign Out</Text>
+          </TouchableOpacity>
+
+        </AnimatedEntry>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -195,7 +277,7 @@ function ProfileRow({ icon, label, children, editing, noBorder }) {
     <View style={[styles.row, !noBorder && styles.rowBorder, editing && styles.rowEditing]}>
       <View style={styles.rowLabelContainer}>
         <View style={styles.rowIcon}>
-          <Ionicons name={icon} size={18} color={Colors.textSecondary} />
+          <Ionicons name={icon} size={16} color={Colors.textSecondary} />
         </View>
         <Text style={styles.rowLabel}>{label}</Text>
       </View>
@@ -209,57 +291,158 @@ function ProfileRow({ icon, label, children, editing, noBorder }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: { paddingBottom: 100 },
+
+  // ── Dark Hero Header ──
   header: {
-    paddingTop: 70,
-    paddingHorizontal: Spacing.xxl,
-    paddingBottom: 40,
-    borderBottomLeftRadius: Radius.xl,
-    borderBottomRightRadius: Radius.xl,
+    paddingTop: 60, paddingHorizontal: Spacing.xxl, paddingBottom: Spacing.xxl,
+    borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden',
   },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
-  headerGreeting: { ...Typography.displayMedium, fontSize: 32, color: Colors.text },
-  logoutIconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', ...Shadows.small },
-  avatarContainer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
-  avatarCircle: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', ...Shadows.medium },
-  avatarText: { ...Typography.displayLarge, color: Colors.textInverse },
-  headerInfo: { flex: 1 },
-  headerName: { ...Typography.h1, color: Colors.text, marginBottom: 2 },
-  headerEmail: { ...Typography.bodySmall, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, alignSelf: 'flex-start', gap: 4, ...Shadows.small },
-  badgeText: { ...Typography.caption, fontWeight: '600', color: Colors.text },
-  
-  content: { paddingHorizontal: Spacing.xxl, marginTop: -20 },
-  card: { backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: Spacing.xl, marginBottom: Spacing.lg, ...Shadows.medium },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg, paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
-  cardTitle: { ...Typography.h2, color: Colors.text },
-  actionBtn: { backgroundColor: Colors.primary, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  
-  saveBtnBottom: { flexDirection: 'row', backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.lg, gap: Spacing.sm },
-  saveBtnTextBottom: { ...Typography.button, color: Colors.textInverse },
-  
+  headerDecor1: {
+    position: 'absolute', top: -40, right: -30, width: 140, height: 140,
+    borderRadius: 70, backgroundColor: 'rgba(82, 168, 162, 0.08)',
+  },
+  headerDecor2: {
+    position: 'absolute', bottom: -20, left: -20, width: 100, height: 100,
+    borderRadius: 50, backgroundColor: 'rgba(140, 179, 105, 0.06)',
+  },
+  headerTopRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  headerGreeting: { ...Typography.h1, color: '#FFFFFF' },
+  logoutIconBtn: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  avatarSection: { alignItems: 'center', marginBottom: Spacing.xl },
+  avatarContainer: {
+    width: 96, height: 96, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md,
+  },
+  avatarRing: {
+    position: 'absolute', width: 96, height: 96, borderRadius: 48, overflow: 'hidden', padding: 3,
+  },
+  avatarCircle: {
+    width: 84, height: 84, borderRadius: 42,
+    alignItems: 'center', justifyContent: 'center', zIndex: 1,
+  },
+  avatarText: { fontSize: 32, fontWeight: '800', color: '#FFFFFF' },
+  headerName: { ...Typography.h1, color: '#FFFFFF', marginBottom: 2 },
+  headerEmail: { ...Typography.bodySmall, color: 'rgba(255,255,255,0.6)', marginBottom: Spacing.sm },
+  verifiedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  verifiedBadgeText: { ...Typography.caption, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
+ 
+  statsRow: {
+    flexDirection: 'row', justifyContent: 'space-around',
+    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: Radius.xl,
+    padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  statItem: { alignItems: 'center', gap: 4 },
+  statIconCircle: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  statValue: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
+  statLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '600' },
+ 
+  // ── Content ──
+  content: { paddingHorizontal: Spacing.xxl, marginTop: -16 },
+ 
+  card: {
+    backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    padding: Spacing.xl, marginBottom: Spacing.lg, ...Shadows.medium,
+    borderWidth: 1, borderColor: Colors.borderLight,
+  },
+  cardHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: Spacing.lg, paddingBottom: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
+  },
+  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardIconGradient: {
+    width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+  },
+  cardTitle: { ...Typography.h3, color: Colors.text, fontSize: 17 },
+  editBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primarySoft, paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: Radius.full,
+  },
+  editBtnText: { ...Typography.caption, color: Colors.primaryDark, fontWeight: '600' },
+ 
+  saveBtnWrap: { borderRadius: Radius.md, overflow: 'hidden', marginTop: Spacing.lg },
+  saveBtn: {
+    flexDirection: 'row', paddingVertical: 14, alignItems: 'center',
+    justifyContent: 'center', gap: Spacing.sm,
+  },
+  saveBtnText: { ...Typography.button, color: '#FFFFFF' },
+ 
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.md },
   rowEditing: { flexDirection: 'column', alignItems: 'flex-start', gap: Spacing.xs },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
   rowLabelContainer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, width: 110 },
-  rowIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
+  rowIcon: {
+    width: 30, height: 30, borderRadius: 10, backgroundColor: Colors.background,
+    alignItems: 'center', justifyContent: 'center',
+  },
   rowLabel: { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '500' },
   rowContent: { flex: 1, alignItems: 'flex-end', justifyContent: 'center' },
   rowContentEditing: { alignItems: 'flex-start', width: '100%', paddingLeft: 40 },
   valueText: { ...Typography.body, color: Colors.text, fontWeight: '600' },
-  
-  input: { ...Typography.body, color: Colors.text, backgroundColor: Colors.background, paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md, width: '100%', borderWidth: 1, borderColor: Colors.border },
-  inputWithSuffix: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, width: '100%' },
+ 
+  input: {
+    ...Typography.body, color: Colors.text, backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md,
+    width: '100%', borderWidth: 1, borderColor: Colors.border,
+  },
+  inputWithSuffix: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, width: '100%',
+  },
   inputNumber: { flex: 1, ...Typography.body, color: Colors.text, paddingVertical: 10 },
   suffixText: { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '600', paddingLeft: Spacing.sm },
-  
+ 
   chipContainer: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xs },
-  genderChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border },
+  genderChip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  },
   genderChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   genderChipText: { ...Typography.caption, color: Colors.textSecondary, fontWeight: '600' },
-  genderChipTextActive: { color: Colors.textInverse },
-
-  statusBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md },
-  statusIndicator: { width: 12, height: 12, borderRadius: 6 },
-  statusBoxTitle: { ...Typography.body, color: Colors.text, fontWeight: '600', marginBottom: 2 },
+  genderChipTextActive: { color: '#FFFFFF' },
+ 
+  // System Status
+  statusBox: {
+    backgroundColor: Colors.background, borderRadius: Radius.lg,
+    padding: Spacing.lg,
+  },
+  statusBoxLeft: { marginBottom: Spacing.md },
+  statusBoxTitle: { ...Typography.body, color: Colors.text, fontWeight: '700', marginBottom: 4 },
   statusBoxDesc: { ...Typography.caption, color: Colors.textSecondary, lineHeight: 18 },
+  statusBarBg: {
+    width: '100%', height: 6, borderRadius: 3,
+    backgroundColor: Colors.borderLight, overflow: 'hidden',
+  },
+  statusBarFill: { height: '100%', borderRadius: 3 },
+ 
+  // Logout
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, paddingVertical: 16, borderRadius: Radius.lg,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: '#FFCDD2',
+    ...Shadows.small,
+  },
+  logoutBtnText: { ...Typography.button, color: Colors.riskCritical, fontSize: 15 },
+  headerPulse: {
+    position: 'absolute',
+    bottom: -10,
+    left: 0,
+    right: 0,
+    opacity: 0.15,
+  },
 });

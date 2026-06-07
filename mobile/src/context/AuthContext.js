@@ -1,7 +1,7 @@
 // Sense Health — Auth Context
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI } from '../api/client';
+import { authAPI, setUnauthorizedHandler } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -14,6 +14,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     loadStoredAuth();
+    setUnauthorizedHandler(() => {
+      logout();
+    });
   }, []);
 
   const loadStoredAuth = async () => {
@@ -70,6 +73,21 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginWithGoogle = async (idToken) => {
+    try {
+      const res = await authAPI.googleLogin(idToken);
+      const { token: newToken, user: newUser } = res.data;
+      await AsyncStorage.setItem('token', newToken);
+      await AsyncStorage.setItem('user', JSON.stringify(newUser));
+      setToken(newToken);
+      setUser(newUser);
+      return { success: true };
+    } catch (err) {
+      const message = err.response?.data?.message || 'Google authentication failed';
+      return { success: false, message };
+    }
+  };
+
   const logout = async () => {
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
@@ -106,6 +124,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!token,
         login,
         register,
+        loginWithGoogle,
         logout,
         refreshUser,
         hasSetupPermissions,
