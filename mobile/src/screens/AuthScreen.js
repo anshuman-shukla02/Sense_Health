@@ -178,47 +178,35 @@ export default function AuthScreen() {
     return (
       <View style={styles.landingContainer}>
         <LinearGradient colors={Colors.gradientHeaderDark} style={styles.landingBackground}>
-          <FloatingParticles count={20} containerHeight={height} />
+          <FloatingParticles count={10} containerHeight={height} />
           
           <View style={styles.landingContent}>
-            <AnimatedEntry preset="zoom" duration={800}>
-              <WellnessHeroSvg width={300} height={240} style={{ marginBottom: Spacing.xl }} />
-            </AnimatedEntry>
-            <AnimatedEntry preset="fadeUp" delay={200}>
-              <Text style={styles.landingTitle}>Sense Health</Text>
-            </AnimatedEntry>
-            <AnimatedEntry preset="fadeUp" delay={400}>
-              <Text style={styles.landingSubtitle}>Your personal AI guide to cognitive wellness, focus, and stress reduction.</Text>
-            </AnimatedEntry>
+            <WellnessHeroSvg width={300} height={240} style={{ marginBottom: Spacing.xl }} />
+            <Text style={styles.landingTitle}>Sense Health</Text>
+            <Text style={styles.landingSubtitle}>Your personal AI guide to cognitive wellness, focus, and stress reduction.</Text>
           </View>
 
           <View style={styles.landingBottom}>
-            <AnimatedEntry preset="slideUp" delay={600}>
-              <TouchableOpacity style={styles.landingButtonPrimary} onPress={() => navigateToForm(false)} activeOpacity={0.85}>
-                <LinearGradient colors={Colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.landingBtnGradient}>
-                  <Text style={styles.landingButtonPrimaryText}>Get Started</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                </LinearGradient>
-              </TouchableOpacity>
-            </AnimatedEntry>
+            <TouchableOpacity style={styles.landingButtonPrimary} onPress={() => navigateToForm(false)} activeOpacity={0.85}>
+              <LinearGradient colors={Colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.landingBtnGradient}>
+                <Text style={styles.landingButtonPrimaryText}>Get Started</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
 
-            <AnimatedEntry preset="slideUp" delay={700}>
-              <TouchableOpacity 
-                style={styles.landingGoogleButton} 
-                onPress={handleGoogleLogin} 
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="logo-google" size={20} color="#FFFFFF" />
-                <Text style={styles.landingGoogleButtonText}>Continue with Google</Text>
-              </TouchableOpacity>
-            </AnimatedEntry>
+            <TouchableOpacity 
+              style={styles.landingGoogleButton} 
+              onPress={handleGoogleLogin} 
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="logo-google" size={20} color="#FFFFFF" />
+              <Text style={styles.landingGoogleButtonText}>Continue with Google</Text>
+            </TouchableOpacity>
             
-            <AnimatedEntry preset="slideUp" delay={800}>
-              <TouchableOpacity style={styles.landingButtonSecondary} onPress={() => navigateToForm(true)} activeOpacity={0.85}>
-                <Text style={styles.landingButtonSecondaryText}>I already have an account</Text>
-              </TouchableOpacity>
-            </AnimatedEntry>
+            <TouchableOpacity style={styles.landingButtonSecondary} onPress={() => navigateToForm(true)} activeOpacity={0.85}>
+              <Text style={styles.landingButtonSecondaryText}>I already have an account</Text>
+            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>

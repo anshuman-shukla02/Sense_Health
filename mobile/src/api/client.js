@@ -20,6 +20,7 @@ const getBaseUrl = () => {
 };
 
 const BASE_URL = getBaseUrl();
+console.log('[API Client] Initialized. Base URL is:', BASE_URL);
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -36,6 +37,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
     return config;
   },
   (error) => Promise.reject(error)
@@ -49,8 +51,12 @@ export const setUnauthorizedHandler = (handler) => {
 
 // Response interceptor — handle 401
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`[API Response Success] ${response.config.method?.toUpperCase()} ${response.config.url} - Status ${response.status}`);
+    return response;
+  },
   async (error) => {
+    console.error(`[API Response Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} - Status ${error.response?.status || 'network_error'} - Message:`, error.response?.data?.message || error.message);
     if (error.response?.status === 401) {
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('user');

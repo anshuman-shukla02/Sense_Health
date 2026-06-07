@@ -391,7 +391,7 @@ export default function LogScreen({ navigation }) {
   if (showSuccess) {
     return (
       <View style={styles.successOverlay}>
-        <FloatingParticles count={25} colors={['#FFD700', '#FF69B4', '#00FFFF', '#32CD32', '#FF4500']} containerHeight={Dimensions.get('window').height} />
+        <FloatingParticles count={10} colors={['#FFD700', '#FF69B4', '#00FFFF', '#32CD32', '#FF4500']} containerHeight={Dimensions.get('window').height} />
         <AnimatedEntry preset="bounce" style={styles.successCard}>
           <LinearGradient colors={Colors.gradientTeal} style={styles.successGradient}>
             <Ionicons name="checkmark-circle" size={80} color="#FFFFFF" style={{ marginBottom: Spacing.md }} />

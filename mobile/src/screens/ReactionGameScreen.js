@@ -174,14 +174,14 @@ export default function ReactionGameScreen({ navigation }) {
   };
 
   const getEvaluation = (avg) => {
-    if (avg < 260) {
+    if (avg < 290) {
       return {
         title: 'Elite Reflexes!',
         desc: 'Your neural reaction speed is outstanding. Your brain is fully charged and exhibiting zero signs of cognitive fatigue.',
         icon: 'trophy',
         color: Colors.riskLow
       };
-    } else if (avg < 330) {
+    } else if (avg < 390) {
       return {
         title: 'Optimal Condition',
         desc: 'Your reaction speed is within the healthy human average. You are well-rested and prepared for high-focus tasks.',

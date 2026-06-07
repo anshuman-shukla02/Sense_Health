@@ -33,6 +33,10 @@ export default function HomeScreen({ navigation }) {
   // Calendar State
   const [logsList, setLogsList] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
 
   useEffect(() => {
     loadData();
@@ -95,8 +99,7 @@ export default function HomeScreen({ navigation }) {
   // Calendar Logic
   const getCalendarDays = () => {
     const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
+    const { year, month } = calendarMonth;
     const firstDayInstance = new Date(year, month, 1);
     let startDayIdx = firstDayInstance.getDay() - 1;
     if (startDayIdx === -1) startDayIdx = 6;
@@ -130,6 +133,36 @@ export default function HomeScreen({ navigation }) {
     return days;
   };
 
+  const goToPrevMonth = () => {
+    setCalendarMonth(prev => {
+      let m = prev.month - 1;
+      let y = prev.year;
+      if (m < 0) { m = 11; y -= 1; }
+      return { year: y, month: m };
+    });
+    setSelectedDay(null);
+  };
+
+  const goToNextMonth = () => {
+    const now = new Date();
+    setCalendarMonth(prev => {
+      let m = prev.month + 1;
+      let y = prev.year;
+      if (m > 11) { m = 0; y += 1; }
+      // Don't go past the current month
+      if (y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth())) {
+        return prev;
+      }
+      return { year: y, month: m };
+    });
+    setSelectedDay(null);
+  };
+
+  const isCurrentMonth = () => {
+    const now = new Date();
+    return calendarMonth.year === now.getFullYear() && calendarMonth.month === now.getMonth();
+  };
+
   const getDayGradient = (entryType) => {
     if (entryType === 'both') return Colors.gradientTeal;
     if (entryType === 'user') return Colors.gradientAccent;
@@ -144,15 +177,21 @@ export default function HomeScreen({ navigation }) {
     return (
       <View style={styles.calendarCard}>
         <View style={styles.calendarHeader}>
-          <View>
+          <TouchableOpacity onPress={goToPrevMonth} style={styles.calNavBtn}>
+            <Ionicons name="chevron-back" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={styles.calendarHeaderCenter}>
             <Text style={styles.calendarCardTitle}>Wellness Tracking</Text>
             <Text style={styles.calendarCardSub}>Consistency across manual entries & auto-sync</Text>
           </View>
           <View style={styles.calendarMonthBadge}>
-            <Text style={styles.calendarMonthText}>
-              {new Date().toLocaleDateString(undefined, { month: 'short' })}
+            <Text style={styles.calendarMonthText} numberOfLines={1}>
+              {new Date(calendarMonth.year, calendarMonth.month).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
             </Text>
           </View>
+          <TouchableOpacity onPress={goToNextMonth} style={[styles.calNavBtn, isCurrentMonth() && { opacity: 0.3 }]} disabled={isCurrentMonth()}>
+            <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.weekdayRow}>
@@ -347,7 +386,7 @@ export default function HomeScreen({ navigation }) {
       >
         {/* ── Dark Gradient Hero Header ── */}
         <LinearGradient colors={Colors.gradientHeaderDark} style={styles.header}>
-          <FloatingParticles count={15} containerHeight={280} />
+          <FloatingParticles count={8} containerHeight={280} />
 
           <AnimatedEntry preset="fadeUp" duration={800}>
             <View style={styles.headerTop}>
@@ -572,16 +611,24 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.borderLight,
   },
   calendarHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: Spacing.lg,
   },
-  calendarCardTitle: { ...Typography.h3, color: Colors.text, fontSize: 17, fontWeight: '700' },
-  calendarCardSub: { ...Typography.caption, color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
-  calendarMonthBadge: {
-    backgroundColor: Colors.primarySoft, paddingHorizontal: 12, paddingVertical: 4,
-    borderRadius: Radius.full,
+  calendarHeaderCenter: {
+    flex: 1, marginHorizontal: Spacing.xs,
   },
-  calendarMonthText: { ...Typography.caption, color: Colors.primaryDark, fontWeight: '700' },
+  calNavBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: Colors.background,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calendarCardTitle: { ...Typography.h3, color: Colors.text, fontSize: 15, fontWeight: '700' },
+  calendarCardSub: { ...Typography.caption, color: Colors.textSecondary, fontSize: 10, marginTop: 2 },
+  calendarMonthBadge: {
+    backgroundColor: Colors.primarySoft, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: Radius.full, flexShrink: 0, marginHorizontal: 4,
+  },
+  calendarMonthText: { ...Typography.caption, color: Colors.primaryDark, fontWeight: '700', fontSize: 11 },
 
   weekdayRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.xs, paddingHorizontal: 2 },
   weekdayText: {

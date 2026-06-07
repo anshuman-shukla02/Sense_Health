@@ -9,12 +9,12 @@ import {
   Easing,
   Dimensions,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Typography, Spacing, Radius, Shadows } from '../theme/typography';
-import { JournalLeafSvg } from '../components/illustrations';
 import FloatingParticles from '../components/animations/FloatingParticles';
 import AnimatedEntry from '../components/animations/AnimatedEntry';
 
@@ -190,9 +190,7 @@ export default function BreathingScreen({ navigation }) {
     <View style={styles.container}>
       <LinearGradient colors={Colors.gradientHeaderDark} style={StyleSheet.absoluteFillObject} />
       
-      <JournalLeafSvg width={180} height={180} style={styles.leafDecorLeft} />
-      <JournalLeafSvg width={180} height={180} style={styles.leafDecorRight} />
-      <FloatingParticles count={15} colors={['#52A8A2', '#85C7C3', '#4ECDC4']} containerHeight={Dimensions.get('window').height} />
+      <FloatingParticles count={8} colors={['#52A8A2', '#85C7C3', '#4ECDC4']} containerHeight={Dimensions.get('window').height} />
       
       {/* ── Header ── */}
       <AnimatedEntry preset="fade" style={styles.header}>
@@ -203,8 +201,13 @@ export default function BreathingScreen({ navigation }) {
         <View style={{ width: 44 }} />
       </AnimatedEntry>
 
-      {/* ── Main Content ── */}
-      <View style={styles.content}>
+      {/* ── Main Content (scrollable to prevent clipping) ── */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         {/* Dynamic Instructional Banner */}
         <AnimatedEntry preset="fadeUp" delay={100} style={styles.statusPanel}>
           <Text style={[styles.actionTag, { color: getActionColor() }]}>
@@ -319,7 +322,7 @@ export default function BreathingScreen({ navigation }) {
             })}
           </View>
         </AnimatedEntry>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -350,11 +353,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 40,
+    paddingBottom: 60,
     paddingHorizontal: Spacing.xxl,
   },
 
@@ -533,18 +537,5 @@ const styles = StyleSheet.create({
   patternDescActive: {
     color: '#B2DFDB',
   },
-  leafDecorLeft: {
-    position: 'absolute',
-    top: 100,
-    left: -40,
-    opacity: 0.08,
-    transform: [{ rotate: '45deg' }],
-  },
-  leafDecorRight: {
-    position: 'absolute',
-    bottom: 80,
-    right: -40,
-    opacity: 0.08,
-    transform: [{ rotate: '-135deg' }],
-  },
+
 });

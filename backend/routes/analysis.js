@@ -49,6 +49,8 @@ function slimLog(log) {
     screenTime: l.screenTime,
     cognitive: l.cognitive ? { reactionTime: l.cognitive.reactionTime, memoryScore: l.cognitive.memoryScore, colorScore: l.cognitive.colorScore } : undefined,
     symptoms: l.symptoms?.length ? l.symptoms : undefined,
+    symptomsNotes: l.symptomsNotes || undefined,
+    notes: l.notes || undefined,
   };
 }
 

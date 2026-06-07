@@ -453,7 +453,7 @@ export default function AISuggestionsScreen({ navigation }) {
       >
       {/* ─── Premium Dark Header ─── */}
       <LinearGradient colors={Colors.gradientHeaderDark} style={styles.header}>
-        <FloatingParticles count={15} containerHeight={220} colors={['#9013FE', '#BD10E0', '#00C9FF', '#92FE9D']} />
+        <FloatingParticles count={8} containerHeight={220} colors={['#9013FE', '#BD10E0', '#00C9FF', '#92FE9D']} />
         <BrainWaveSvg
           width={280}
           height={150}
